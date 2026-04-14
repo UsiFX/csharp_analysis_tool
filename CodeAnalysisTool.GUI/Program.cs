@@ -17,12 +17,37 @@ namespace CodeAnalysisTool.GUI;
 
 static class Program
 {
+    private static void ShowFatalError(string title, Exception ex)
+    {
+        MessageBox.Show(
+            $"{title}\n\n{ex.Message}\n\n{ex}",
+            "CodeAnalysisTool.GUI",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error);
+    }
+
     [STAThread]
     static void Main()
     {
-        // To customize application configuration such as set high DPI settings or default font,
-        // see https://aka.ms/applicationconfiguration.
-        ApplicationConfiguration.Initialize();
-        Application.Run(new Form1());
-    }    
+        try
+        {
+            // To customize application configuration such as set high DPI settings or default font,
+            // see https://aka.ms/applicationconfiguration.
+            ApplicationConfiguration.Initialize();
+
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (_, e) => ShowFatalError("Unhandled UI exception.", e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                if (e.ExceptionObject is Exception ex)
+                    ShowFatalError("Unhandled application exception.", ex);
+            };
+
+            Application.Run(new Form1());
+        }
+        catch (Exception ex)
+        {
+            ShowFatalError("Failed to start GUI.", ex);
+        }
+    }
 }

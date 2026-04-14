@@ -17,6 +17,7 @@
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -105,13 +106,41 @@ public class CompilerService
 
     private static IReadOnlyList<MetadataReference> LoadRuntimeReferences()
     {
-        string? tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+        var referencePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(tpa))
+        string? tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+        if (!string.IsNullOrWhiteSpace(tpa))
+        {
+            foreach (string path in tpa.Split(Path.PathSeparator))
+            {
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                    referencePaths.Add(path);
+            }
+        }
+
+        // Add already loaded assemblies as a fallback when TPA is unavailable.
+        foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (asm.IsDynamic)
+                continue;
+
+            string? location = asm.Location;
+            if (!string.IsNullOrWhiteSpace(location) && File.Exists(location))
+                referencePaths.Add(location);
+        }
+
+        // Include all runtime assemblies from the current runtime directory.
+        string runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
+        if (!string.IsNullOrWhiteSpace(runtimeDir) && Directory.Exists(runtimeDir))
+        {
+            foreach (string dll in Directory.EnumerateFiles(runtimeDir, "*.dll"))
+                referencePaths.Add(dll);
+        }
+
+        if (referencePaths.Count == 0)
             throw new InvalidOperationException("Could not load runtime assembly references.");
 
-        return tpa
-            .Split(Path.PathSeparator)
+        return referencePaths
             .Select(path => MetadataReference.CreateFromFile(path))
             .ToArray();
     }
